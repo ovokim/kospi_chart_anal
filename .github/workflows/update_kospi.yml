@@ -1,0 +1,38 @@
+name: Daily Auto-Update KOSPI Data
+
+on:
+  schedule:
+    # 월~금 한국 시간 18:30 (UTC 09:30) 자동 실행
+    - cron: '30 9 * * 1-5'
+  workflow_dispatch: # GitHub 웹사이트에서 'Run workflow' 버튼으로 언제든 수동 실행 가능
+
+permissions:
+  contents: write
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 3.11 환경 구성
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 필수 라이브러리 설치
+        run: |
+          pip install requests
+
+      - name: 수집기 실행 (collector.py)
+        run: |
+          python collector.py
+
+      - name: 갱신된 데이터 자동 커밋 & 푸시
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add kospi_data.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto update KOSPI data: $(date '+%Y-%m-%d %H:%M:%S KST')" && git push)
