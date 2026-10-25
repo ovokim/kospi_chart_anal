@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KOSPI 종합 수급 · 자금동향 · ADR 프로 분석기</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #0b0e14;
+            --card-bg: #151922;
+            --border: #232936;
+            --text-main: #e1e4ea;
+            --text-muted: #788294;
+            --red: #f23645;
+            --blue: #2962ff;
+            --teal: #089981;
+            --yellow: #f5a623;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Malgun Gothic", sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            padding: 16px 24px;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        .status-badge {
+            font-size: 0.8rem;
+            font-weight: bold;
+            padding: 4px 12px;
+            border-radius: 20px;
+            background: rgba(8, 153, 129, 0.15);
+            color: #00e676;
+            border: 1px solid rgba(8, 153, 129, 0.4);
+        }
+
+        .chart-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 16px;
+            padding: 14px 16px 10px 16px;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            padding-bottom: 6px;
+        }
+
+        .card-title {
+            font-size: 0.92rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .card-desc {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+        }
+
+        .chart-box { width: 100%; }
+        #chart-kospi { height: 420px; }
+        #chart-fund { height: 270px; }
+        #chart-adr { height: 210px; }
+        #chart-daily { height: 240px; }
+        #chart-cum { height: 260px; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div>
+            <h2 style="font-size: 1.15rem; font-weight: 800;">📊 KOSPI 통합 시장분석 대시보드</h2>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 3px;">금융투자협회(FreeSIS) 공식 자금동향 · 지수 캔들 · 3대 주체 실시간/누적 수급</p>
+        </div>
+        <div id="status-badge" class="status-badge">동기화 완료</div>
+    </header>
+
+    <!-- [패널 1] KOSPI 지수 -->
+    <div class="chart-card">
+        <div class="card-header">
+            <span class="card-title">📈 1. KOSPI 주가지수 & 이동평균선</span>
+            <span class="card-desc">MA5(주황), MA20(노랑), MA60(파랑)</span>
+        </div>
+        <div id="chart-kospi" class="chart-box"></div>
+    </div>
+
+    <!-- [패널 2] 증시 자금동향 -->
+    <div class="chart-card">
+        <div class="card-header">
+            <span class="card-title">💰 2. 증시 자금동향 (금융투자협회 공식 예탁금 · 신용잔고 · 신용비율)</span>
+            <span class="card-desc">좌측축: 금액(조원) | 우측축: 신용비율(%, 40% 위험 경계선)</span>
+        </div>
+        <div id="chart-fund" class="chart-box"></div>
+    </div>
+
+    <!-- [패널 3] ADR 등락비율 -->
+    <div class="chart-card">
+        <div class="card-header">
+            <span class="card-title">⚖️ 3. ADR (20일 등락비율 - 시장 과열/침체 지표)</span>
+            <span class="card-desc">120% 이상(단기 과열) / 80% 이하(단기 침체 바닥권)</span>
+        </div>
+        <div id="chart-adr" class="chart-box"></div>
+    </div>
+
+    <!-- [패널 4] 당일 수급 동향 (막대 Bar) -->
+    <div class="chart-card">
+        <div class="card-header">
+            <span class="card-title">🎯 4. 투자자별 당일 순매수 동향 (외인 · 기관 · 개인)</span>
+            <span class="card-desc">0선 기준: 위(순매수) / 아래(순매도) | 단위: 억원</span>
+        </div>
+        <div id="chart-daily" class="chart-box"></div>
+    </div>
+
+    <!-- [패널 5] 1년 누적 수급 추이 -->
+    <div class="chart-card">
+        <div class="card-header">
+            <span class="card-title">🌊 5. 투자자별 1년 누적 순매수 추이</span>
+            <span class="card-desc">외국인(초록), 기관(파랑), 개인(빨강)</span>
+        </div>
+        <div id="chart-cum" class="chart-box"></div>
+    </div>
+
+    <script>
+        function calcMA(days, klines) {
+            let res = [];
+            for (let i = 0; i < klines.length; i++) {
+                if (i < days - 1) { res.push('-'); continue; }
+                let sum = 0;
+                for (let j = 0; j < days; j++) sum += klines[i - j][1];
+                res.push(+(sum / days).toFixed(2));
+            }
+            return res;
+        }
+
+        async function init() {
+            try {
+                const res = await fetch('./kospi_data.json?t=' + Date.now());
+                if (!res.ok) throw new Error("kospi_data.json 로드 실패");
+                const data = await res.json();
+
+                const dates = data.dates;
+                const lastDate = dates[dates.length - 1];
+                document.getElementById('status-badge').textContent = `최근 동기화: ${lastDate}`;
+
+                // 🌟 모든 패널의 여백을 100% 동일하게 통일 (세로 십자선 완벽 일치)
+                const gridLayout = { left: 75, right: 65, top: 35, bottom: 25 };
+
+                const commonTooltip = {
+                    trigger: 'axis',
+                    axisPointer: { type: 'cross', lineStyle: { color: '#667085', type: 'dashed' } },
+                    backgroundColor: 'rgba(21, 25, 34, 0.95)',
+                    borderColor: '#232936',
+                    textStyle: { color: '#e1e4ea', fontSize: 12 },
+                    valueFormatter: (val) => typeof val === 'number' ? val.toLocaleString() : val
+                };
+
+                // 1. KOSPI
+                const chartKospi = echarts.init(document.getElementById('chart-kospi'));
+                chartKospi.setOption({
+                    tooltip: commonTooltip,
+                    legend: { top: 4, left: 10, textStyle: { color: '#788294' } },
+                    grid: gridLayout,
+                    xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#232936' } }, axisLabel: { color: '#788294' } },
+                    yAxis: { scale: true, splitLine: { lineStyle: { color: '#1a1f2c' } }, axisLabel: { formatter: '{value} pt', color: '#788294' } },
+                    dataZoom: [{ type: 'inside', start: 70, end: 100 }],
+                    series: [
+                        { name: 'KOSPI', type: 'candlestick', data: data.klines, itemStyle: { color: '#f23645', color0: '#089981', borderColor: '#f23645', borderColor0: '#089981' } },
+                        { name: 'MA5', type: 'line', data: calcMA(5, data.klines), smooth: true, showSymbol: false, lineStyle: { color: '#ff9800', width: 1.5 } },
+                        { name: 'MA20', type: 'line', data: calcMA(20, data.klines), smooth: true, showSymbol: false, lineStyle: { color: '#ffeb3b', width: 1.5 } },
+                        { name: 'MA60', type: 'line', data: calcMA(60, data.klines), smooth: true, showSymbol: false, lineStyle: { color: '#2962ff', width: 1.5 } }
+                    ]
+                });
+
+                // 2. 자금동향
+                const chartFund = echarts.init(document.getElementById('chart-fund'));
+                const lastRatio = data.creditRatios[data.creditRatios.length - 1];
+                chartFund.setOption({
+                    tooltip: commonTooltip,
+                    legend: { top: 4, left: 10, textStyle: { color: '#788294' } },
+                    grid: gridLayout,
+                    xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#232936' } }, axisLabel: { color: '#788294' } },
+                    yAxis: [
+                        { scale: true, splitLine: { lineStyle: { color: '#1a1f2c' } }, axisLabel: { formatter: '{value}조', color: '#788294' } },
+                        { scale: true, position: 'right', splitLine: { show: false }, axisLabel: { formatter: '{value}%', color: '#e040fb' }, min: 20, max: 45 }
+                    ],
+                    dataZoom: [{ type: 'inside', start: 70, end: 100 }],
+                    series: [
+                        { name: '예탁금(조)', type: 'line', data: data.deposits, smooth: true, showSymbol: false, lineStyle: { color: '#f5a623', width: 2.2 } },
+                        { name: '신용잔고(조)', type: 'line', data: data.creditBalances, smooth: true, showSymbol: false, lineStyle: { color: '#00bcd4', width: 2.2 } },
+                        {
+                            name: `신용비율(현재: ${lastRatio}%)`, type: 'line', yAxisIndex: 1, data: data.creditRatios, smooth: true, showSymbol: false,
+                            lineStyle: { color: '#e040fb', width: 2, type: 'dashed' },
+                            markLine: { symbol: 'none', data: [{ yAxis: 40.0, lineStyle: { color: '#f23645', type: 'dashed' }, label: { formatter: '위험 (40%)', color: '#f23645' } }] }
+                        }
+                    ]
+                });
+
+                // 3. ADR
+                const chartAdr = echarts.init(document.getElementById('chart-adr'));
+                const lastAdr = data.adr[data.adr.length - 1];
+                chartAdr.setOption({
+                    tooltip: commonTooltip,
+                    legend: { top: 4, left: 10, textStyle: { color: '#788294' } },
+                    grid: gridLayout,
+                    xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#232936' } }, axisLabel: { color: '#788294' } },
+                    yAxis: { scale: true, splitLine: { lineStyle: { color: '#1a1f2c' } }, axisLabel: { formatter: '{value}%', color: '#788294' }, min: 50, max: 150 },
+                    dataZoom: [{ type: 'inside', start: 70, end: 100 }],
+                    series: [
+                        {
+                            name: `ADR 20일(현재: ${lastAdr}%)`, type: 'line', data: data.adr, smooth: true, showSymbol: false,
+                            lineStyle: { color: '#b388ff', width: 2.2 },
+                            markLine: {
+                                symbol: 'none',
+                                data: [
+                                    { yAxis: 120, lineStyle: { color: '#f23645', type: 'dashed' }, label: { formatter: '과열 (120%)', color: '#f23645' } },
+                                    { yAxis: 80, lineStyle: { color: '#089981', type: 'dashed' }, label: { formatter: '침체 (80%)', color: '#089981' } }
+                                ]
+                            }
+                        }
+                    ]
+                });
+
+                // 4. 당일 수급
+                const chartDaily = echarts.init(document.getElementById('chart-daily'));
+                chartDaily.setOption({
+                    tooltip: commonTooltip,
+                    legend: { top: 4, left: 10, textStyle: { color: '#788294' } },
+                    grid: gridLayout,
+                    xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#232936' } }, axisLabel: { color: '#788294' } },
+                    yAxis: { scale: true, splitLine: { lineStyle: { color: '#1a1f2c' } }, axisLabel: { formatter: '{value}억', color: '#788294' } },
+                    dataZoom: [{ type: 'inside', start: 70, end: 100 }],
+                    series: [
+                        { name: '외국인 순매수', type: 'bar', data: data.investorNet.foreign, itemStyle: { color: '#089981' } },
+                        { name: '기관 순매수', type: 'bar', data: data.investorNet.inst, itemStyle: { color: '#2962ff' } },
+                        { name: '개인 순매수', type: 'bar', data: data.investorNet.ant, itemStyle: { color: '#f23645' } }
+                    ]
+                });
+
+                // 5. 누적 수급
+                const chartCum = echarts.init(document.getElementById('chart-cum'));
+                chartCum.setOption({
+                    tooltip: commonTooltip,
+                    legend: { top: 4, left: 10, textStyle: { color: '#788294' } },
+                    grid: { left: 75, right: 65, top: 35, bottom: 35 },
+                    xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#232936' } }, axisLabel: { color: '#788294' } },
+                    yAxis: { scale: true, splitLine: { lineStyle: { color: '#1a1f2c' } }, axisLabel: { formatter: '{value}억', color: '#788294' } },
+                    dataZoom: [
+                        { type: 'inside', start: 70, end: 100 },
+                        { type: 'slider', bottom: 5, height: 18, borderColor: '#232936', fillerColor: 'rgba(41, 98, 255, 0.2)' }
+                    ],
+                    series: [
+                        { name: '외국인 누적', type: 'line', data: data.cumulative.foreign, showSymbol: false, lineStyle: { color: '#089981', width: 2.2 } },
+                        { name: '기관 누적', type: 'line', data: data.cumulative.inst, showSymbol: false, lineStyle: { color: '#2962ff', width: 2.2 } },
+                        { name: '개인 누적', type: 'line', data: data.cumulative.ant, showSymbol: false, lineStyle: { color: '#f23645', width: 2.2 } }
+                    ]
+                });
+
+                // 5대 차트 커서 및 줌 연동
+                echarts.connect([chartKospi, chartFund, chartAdr, chartDaily, chartCum]);
+
+                window.addEventListener('resize', () => {
+                    chartKospi.resize();
+                    chartFund.resize();
+                    chartAdr.resize();
+                    chartDaily.resize();
+                    chartCum.resize();
+                });
+
+            } catch (err) {
+                console.error(err);
+                alert("차트 로드 에러: " + err.message);
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
